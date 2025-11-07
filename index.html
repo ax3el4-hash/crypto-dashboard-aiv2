@@ -99,71 +99,95 @@
 
   <canvas id="chart"></canvas>
 
-  <script>
-    const apiBase = ""; // relative URL for Render
-    let chart, dataPoints = [], labels = [];
+<script>
+let chart;
+let dataPoints = [];
+let labels = [];
 
-    function initChart() {
-      const ctx = document.getElementById("chart").getContext("2d");
-      chart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels,
-          datasets: [{
-            label: "Price (USDT)",
-            data: dataPoints,
-            borderColor: "#66fcf1",
-            backgroundColor: "rgba(102,252,241,0.15)",
-            fill: true,
-            tension: 0.3
-          }]
-        },
-        options: {
-          scales: { x: { display: false }, y: { ticks: { color: "#ccc" } } },
-          plugins: { legend: { labels: { color: "#f8f8f8" } } }
-        }
-      });
+async function fetchPrice() {
+  try {
+    const res = await fetch("/api/price");
+    const data = await res.json();
+
+    console.log("Price fetched:", data); // ✅ check data in browser console
+
+    const p = parseFloat(data.price);
+    if (isNaN(p)) return;
+
+    // ✅ Update price display
+    document.getElementById("price").innerText = `${data.symbol}: $${p.toFixed(6)}`;
+
+    // ✅ Update chart if it exists
+    if (chart) {
+      dataPoints.push(p);
+      labels.push("");
+      if (dataPoints.length > 200) {
+        dataPoints.shift();
+        labels.shift();
+      }
+      chart.data.datasets[0].data = dataPoints;
+      chart.data.labels = labels;
+      chart.update('none');
     }
+  } catch (err) {
+    console.error("Price fetch error:", err);
+  }
+}
 
-    async function fetchPrice() {
-      try {
-        const res = await fetch(`${apiBase}/api/price`);
-        const data = await res.json();
-        if (!data.price) return;
-        const p = parseFloat(data.price);
-        document.getElementById("price").innerText = `${data.symbol}: $${p.toFixed(6)}`;
-        dataPoints.push(p);
-        labels.push("");
-        if (dataPoints.length > 200) { dataPoints.shift(); labels.shift(); }
-        chart.update();
-      } catch (e) { console.error(e); }
+async function fetchSignal() {
+  try {
+    const res = await fetch("/api/signal");
+    const data = await res.json();
+
+    const signalDiv = document.getElementById("signal");
+    signalDiv.innerText = `${data.signal} (${data.confidence}%)`;
+
+    // ✅ Color-code signals
+    if (data.signal === "BUY") signalDiv.style.color = "#16c784";
+    else if (data.signal === "SELL") signalDiv.style.color = "#ea3943";
+    else signalDiv.style.color = "#f0b90b";
+  } catch (err) {
+    console.error("Signal fetch error:", err);
+  }
+}
+
+function initChart() {
+  const ctx = document.getElementById("priceChart").getContext("2d");
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: labels,
+      datasets: [{
+        label: "BTC/USDT (Live)",
+        data: dataPoints,
+        borderColor: "#f7931a",
+        backgroundColor: "rgba(247,147,26,0.2)",
+        borderWidth: 2,
+        fill: true,
+        pointRadius: 0,
+        tension: 0.2
+      }]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      scales: {
+        x: { display: false },
+        y: { beginAtZero: false }
+      }
     }
+  });
+}
 
-    async function fetchSignal() {
-      try {
-        const res = await fetch(`${apiBase}/api/signal`);
-        const data = await res.json();
-        const signalEl = document.getElementById("signal");
-        const trendEl = document.getElementById("trend");
-        const riskBar = document.getElementById("risk-bar");
+// ✅ Ensure it runs after page loads
+window.onload = () => {
+  initChart();
+  fetchPrice();
+  fetchSignal();
+  setInterval(fetchPrice, 1000); // every 1s
+  setInterval(fetchSignal, 3000); // every 3s
+};
+</script>
 
-        signalEl.innerText = `Signal: ${data.signal}`;
-        signalEl.style.color = data.signal === "BUY" ? "#4cff4c" :
-                               data.signal === "SELL" ? "#ff4c4c" : "#f8f8f8";
-        trendEl.innerText = `Trend: ${data.diff}%`;
-        riskBar.style.width = Math.min(Math.abs(data.diff) * 2, 100) + "%";
-      } catch (e) { console.error(e); }
-    }
-
-    async function changePair() {
-      const newPair = document.getElementById("pair").value;
-      await fetch(`${apiBase}/api/change/${newPair}`);
-      dataPoints = []; labels = [];
-    }
-
-    initChart();
-    setInterval(fetchPrice, 1000);
-    setInterval(fetchSignal, 3000);
-  </script>
 </body>
 </html>
