@@ -1,71 +1,55 @@
-const express = require('express');
-const fetch = require('node-fetch');
-const WebSocket = require('ws');
-const http = require('http');
-const url = require('url');
+import express from "express";
+import { WebSocketServer } from "ws";
+import fetch from "node-fetch";
+import cors from "cors";
 
-const PORT = process.env.PORT || 3000;
 const app = express();
-app.use(express.static('.'));
-app.use(express.json());
+app.use(cors());
+const PORT = process.env.PORT || 10000;
 
-app.get('/api/ticker24hr', async (req,res)=>{
-  try{
-    const r = await fetch('https://api.binance.com/api/v3/ticker/24hr');
-    const j = await r.json();
-    res.json(j);
-  }catch(e){ res.status(500).json({error:'failed'}); }
-});
+// --- Binance stream ---
+let binanceWS;
+let lastPrice = 0;
 
-app.get('/api/exchangeInfo', async (req,res)=>{
-  try{
-    const r = await fetch('https://api.binance.com/api/v3/exchangeInfo');
-    const j = await r.json();
-    res.json(j);
-  }catch(e){ res.status(500).json({error:'failed'}); }
-});
+function connectBinance(symbol = "BTCUSDT") {
+  const url = `wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@trade`;
+  console.log("Connecting to Binance:", url);
+  binanceWS = new WebSocket(url);
 
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ noServer: true });
+  binanceWS.onmessage = (msg) => {
+    const data = JSON.parse(msg.data);
+    lastPrice = parseFloat(data.p);
+  };
 
-server.on('upgrade', function upgrade(request, socket, head) {
-  const pathname = url.parse(request.url,true).pathname;
-  if (pathname === '/ws') {
-    wss.handleUpgrade(request, socket, head, function done(ws) {
-      wss.emit('connection', ws, request);
-    });
-  } else {
-    socket.destroy();
-  }
-});
+  binanceWS.onclose = () => {
+    console.log("Binance connection closed, reconnecting...");
+    setTimeout(() => connectBinance(symbol), 3000);
+  };
 
-wss.on('connection', (client, req) => {
-  const params = url.parse(req.url, true).query;
-  const pair = (params.pair||'BTCUSDT').toLowerCase();
-  const binanceUrl = `wss://stream.binance.com:9443/ws/${pair}@trade`;
-  console.log('Client connected, proxying', binanceUrl);
-  const upstream = new WebSocket(binanceUrl);
-
-  upstream.on('message', (msg)=> {
-    try{ client.send(msg.toString()); }catch(e){}
-  });
-  upstream.on('close', ()=> { try{ client.close(); }catch(e){} });
-  upstream.on('error', (e)=> console.error('upstream error', e));
-
-  client.on('close', ()=> { try{ upstream.close(); }catch(e){} });
-  client.on('error', ()=> { try{ upstream.close(); }catch(e){} });
-});
-
-let cachedExchangeInfo = null;
-async function refreshExchangeInfo(){
-  try{
-    const r = await fetch('https://api.binance.com/api/v3/exchangeInfo');
-    cachedExchangeInfo = await r.json();
-  }catch(e){ console.error('exchangeInfo refresh failed', e); }
+  binanceWS.onerror = (err) => {
+    console.error("Binance error:", err.message);
+    binanceWS.close();
+  };
 }
-refreshExchangeInfo();
-setInterval(refreshExchangeInfo, 10*60*1000);
 
-server.listen(PORT, ()=> {
-  console.log('Server listening on', PORT);
+connectBinance("BTCUSDT");
+
+// --- REST endpoint for frontend polling ---
+app.get("/api/price", (req, res) => {
+  res.json({ price: lastPrice });
+});
+
+// --- WebSocket broadcast to clients ---
+const server = app.listen(PORT, () =>
+  console.log(`Server running on port ${PORT}`)
+);
+const wss = new WebSocketServer({ server });
+
+wss.on("connection", (ws) => {
+  console.log("Frontend connected");
+  const sendInterval = setInterval(() => {
+    ws.send(JSON.stringify({ price: lastPrice }));
+  }, 1000);
+
+  ws.on("close", () => clearInterval(sendInterval));
 });
