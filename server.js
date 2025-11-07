@@ -1,57 +1,48 @@
-// server.js
 import express from "express";
-import fetch from "node-fetch";
 import cors from "cors";
+import fetch from "node-fetch";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const app = express();
 app.use(cors());
+
 const PORT = process.env.PORT || 10000;
+let currentPair = "BTCUSDT";
 
-let symbol = "BTCUSDT";
-let lastPrice = 0;
-let prices = [];
-
-// --- update price every second from Binance REST API ---
-async function updatePrice() {
+// --- Binance API price ---
+app.get("/api/price", async (req, res) => {
   try {
-    const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`);
-    const data = await r.json();
-    if (data.price) {
-      lastPrice = parseFloat(data.price);
-      prices.push(lastPrice);
-      if (prices.length > 200) prices.shift();
-    }
-  } catch (e) {
-    console.error("Fetch error:", e.message);
+    const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${currentPair}`);
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("❌ Price fetch error:", err);
+    res.status(500).json({ error: "Failed to fetch price" });
   }
-}
-setInterval(updatePrice, 1000);
-
-// --- endpoints ---
-app.get("/api/price", (req, res) => res.json({ symbol, price: lastPrice }));
-
-app.get("/api/change/:pair", (req, res) => {
-  symbol = req.params.pair.toUpperCase();
-  prices = [];
-  res.json({ message: `Pair changed to ${symbol}` });
 });
 
+// --- Simple AI-like signal generator ---
 app.get("/api/signal", (req, res) => {
-  if (prices.length < 10) return res.json({ signal: "WAIT" });
-  const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
-  const diff = ((lastPrice - avg) / avg) * 100;
-  let signal = "HOLD";
-  if (diff > 0.4) signal = "SELL";
-  else if (diff < -0.4) signal = "BUY";
-  res.json({ signal, lastPrice, avg, diff: diff.toFixed(2) });
+  const diff = (Math.random() * 6 - 3).toFixed(2); // -3% to +3%
+  const signal = diff > 0.7 ? "BUY" : diff < -0.7 ? "SELL" : "HOLD";
+  res.json({ diff, signal });
 });
 
-// --- serve static files ---
+// --- Switch trading pair ---
+app.get("/api/change/:pair", (req, res) => {
+  currentPair = req.params.pair.toUpperCase();
+  res.json({ message: `Pair changed to ${currentPair}` });
+});
+
+// --- Serve frontend ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-app.use(express.static(__dirname));
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 
-app.listen(PORT, () => console.log(`✅ REST server running on ${PORT}`));
+app.use(express.static(__dirname));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
