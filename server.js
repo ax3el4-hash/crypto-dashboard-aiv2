@@ -49,3 +49,14 @@ app.get("/api/signal", (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`✅ REST server running on ${PORT}`));
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.use(express.static(__dirname));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
