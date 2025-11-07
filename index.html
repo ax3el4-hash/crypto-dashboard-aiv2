@@ -1,136 +1,169 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Crypto AI Dashboard</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>
-  body {
-    background: linear-gradient(180deg, #0b0c10 0%, #1f2833 100%);
-    color: #f8f8f8;
-    font-family: "Segoe UI", sans-serif;
-    text-align: center;
-    padding: 20px;
-  }
-  h1 {
-    color: #66fcf1;
-    font-weight: 600;
-  }
-  select, button {
-    background: #1f2833;
-    color: #ffffff;
-    padding: 10px 15px;
-    margin: 5px;
-    border: none;
-    border-radius: 6px;
-    font-size: 1em;
-    cursor: pointer;
-    transition: 0.2s;
-  }
-  button:hover { background: #45a29e; }
-  #price {
-    font-size: 2em;
-    margin-top: 20px;
-    font-weight: bold;
-  }
-  #signal {
-    font-size: 1.5em;
-    margin-top: 10px;
-    font-weight: bold;
-  }
-  canvas {
-    width: 90%;
-    max-width: 800px;
-    height: 350px;
-    margin-top: 40px;
-    background: rgba(255,255,255,0.03);
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(102,252,241,0.2);
-  }
-</style>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="UTF-8" />
+  <title>Crypto AI Trader</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      background: radial-gradient(circle at 20% 20%, #0b0c10, #1f2833 80%);
+      color: #fff;
+      font-family: "Poppins", sans-serif;
+      text-align: center;
+      padding: 25px;
+    }
+    h1 {
+      color: #66fcf1;
+      font-weight: 600;
+      margin-bottom: 15px;
+    }
+    #controls {
+      margin-bottom: 15px;
+    }
+    select, button {
+      background: #1f2833;
+      color: #fff;
+      padding: 10px 15px;
+      margin: 5px;
+      border: none;
+      border-radius: 6px;
+      font-size: 1em;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    button:hover { background: #45a29e; }
+    #price {
+      font-size: 2em;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+    #signal, #trend {
+      font-size: 1.3em;
+      margin-top: 10px;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 0 15px rgba(102,252,241,0.15);
+      display: inline-block;
+      margin-top: 20px;
+    }
+    #chart {
+      width: 90%;
+      max-width: 900px;
+      height: 400px;
+      margin-top: 30px;
+    }
+    #risk {
+      width: 250px;
+      height: 20px;
+      background: #333;
+      border-radius: 10px;
+      margin: 15px auto;
+      overflow: hidden;
+      position: relative;
+    }
+    #risk-bar {
+      height: 100%;
+      background: linear-gradient(90deg,#4cff4c,#ffeb3b,#ff4c4c);
+      width: 50%;
+      transition: width 0.5s;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-<h1>Crypto AI Dashboard</h1>
+  <h1>Crypto AI Trader Dashboard</h1>
 
-<div>
-  <select id="pair">
-    <option value="BTCUSDT">BTC/USDT</option>
-    <option value="ETHUSDT">ETH/USDT</option>
-    <option value="BNBUSDT">BNB/USDT</option>
-    <option value="DOGEUSDT">DOGE/USDT</option>
-    <option value="SHIBUSDT">SHIB/USDT</option>
-  </select>
-  <button onclick="changePair()">Change</button>
-</div>
+  <div id="controls">
+    <select id="pair">
+      <option value="BTCUSDT">BTC/USDT</option>
+      <option value="ETHUSDT">ETH/USDT</option>
+      <option value="BNBUSDT">BNB/USDT</option>
+      <option value="DOGEUSDT">DOGE/USDT</option>
+      <option value="SHIBUSDT">SHIB/USDT</option>
+      <option value="SOLUSDT">SOL/USDT</option>
+    </select>
+    <button onclick="changePair()">Change</button>
+  </div>
 
-<div id="price">Loading...</div>
-<div id="signal">Signal: WAIT</div>
+  <div class="card">
+    <div id="price">Loading...</div>
+    <div id="signal">Signal: WAIT</div>
+    <div id="trend">Trend: 0%</div>
+    <div id="risk">
+      <div id="risk-bar"></div>
+    </div>
+  </div>
 
-<canvas id="chart"></canvas>
+  <canvas id="chart"></canvas>
 
-<script>
-const apiBase = "";
-let currentPair = "BTCUSDT";
-let chart, dataPoints = [], labels = [];
+  <script>
+    const apiBase = ""; // use relative path for Render
+    let chart, dataPoints = [], labels = [];
 
-function initChart() {
-  const ctx = document.getElementById("chart").getContext("2d");
-  chart = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [{
-        label: "Price (USDT)",
-        data: dataPoints,
-        borderColor: "#66fcf1",
-        backgroundColor: "rgba(102,252,241,0.15)",
-        fill: true,
-        tension: 0.3
-      }]
-    },
-    options: {
-      scales: { x: { display: false }, y: { color: "#ffffff" } },
-      plugins: { legend: { labels: { color: "#f8f8f8" } } }
+    function initChart() {
+      const ctx = document.getElementById("chart").getContext("2d");
+      chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label: "Price (USDT)",
+            data: dataPoints,
+            borderColor: "#66fcf1",
+            backgroundColor: "rgba(102,252,241,0.15)",
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          scales: { x: { display: false }, y: { ticks: { color: "#ccc" } } },
+          plugins: { legend: { labels: { color: "#f8f8f8" } } }
+        }
+      });
     }
-  });
-}
 
-async function fetchPrice() {
-  try {
-    const res = await fetch(`${apiBase}/api/price`);
-    const data = await res.json();
-    if (!data.price) return;
-    document.getElementById("price").innerText = `${data.symbol}: $${parseFloat(data.price).toFixed(6)}`;
-    dataPoints.push(parseFloat(data.price));
-    labels.push("");
-    if (dataPoints.length > 100) { dataPoints.shift(); labels.shift(); }
-    chart.update();
-  } catch (e) { console.error(e); }
-}
+    async function fetchPrice() {
+      try {
+        const res = await fetch(`${apiBase}/api/price`);
+        const data = await res.json();
+        if (!data.price) return;
+        const p = parseFloat(data.price);
+        document.getElementById("price").innerText = `${data.symbol}: $${p.toFixed(6)}`;
+        dataPoints.push(p);
+        labels.push("");
+        if (dataPoints.length > 200) { dataPoints.shift(); labels.shift(); }
+        chart.update();
+      } catch (e) { console.error(e); }
+    }
 
-async function fetchSignal() {
-  try {
-    const res = await fetch(`${apiBase}/api/signal`);
-    const data = await res.json();
-    const el = document.getElementById("signal");
-    el.innerText = `Signal: ${data.signal}`;
-    el.style.color = data.signal === "BUY" ? "#4cff4c" :
-                     data.signal === "SELL" ? "#ff4c4c" : "#f8f8f8";
-  } catch (e) { console.error(e); }
-}
+    async function fetchSignal() {
+      try {
+        const res = await fetch(`${apiBase}/api/signal`);
+        const data = await res.json();
+        const signalEl = document.getElementById("signal");
+        const trendEl = document.getElementById("trend");
+        const riskBar = document.getElementById("risk-bar");
 
-async function changePair() {
-  const newPair = document.getElementById("pair").value;
-  await fetch(`${apiBase}/api/change/${newPair}`);
-  currentPair = newPair;
-  dataPoints = [];
-  labels = [];
-}
+        signalEl.innerText = `Signal: ${data.signal}`;
+        signalEl.style.color = data.signal === "BUY" ? "#4cff4c" :
+                               data.signal === "SELL" ? "#ff4c4c" : "#f8f8f8";
+        trendEl.innerText = `Trend: ${data.diff}%`;
+        riskBar.style.width = Math.min(Math.abs(data.diff) * 2, 100) + "%";
+      } catch (e) { console.error(e); }
+    }
 
-initChart();
-setInterval(fetchPrice, 1000);
-setInterval(fetchSignal, 3000);
-</script>
+    async function changePair() {
+      const newPair = document.getElementById("pair").value;
+      await fetch(`${apiBase}/api/change/${newPair}`);
+      dataPoints = []; labels = [];
+    }
+
+    initChart();
+    setInterval(fetchPrice, 1000);
+    setInterval(fetchSignal, 3000);
+  </script>
 </body>
 </html>
