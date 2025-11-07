@@ -1,292 +1,117 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Crypto Dashboard AI — BTC default</title>
-<link rel="stylesheet" href="style.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0/dist/chartjs-plugin-annotation.min.js"></script>
+<meta charset="UTF-8" />
+<title>Crypto AI Dashboard</title>
+<style>
+  body {
+    background-color: #0b0c10;
+    color: #f8f8f8;
+    font-family: "Segoe UI", sans-serif;
+    text-align: center;
+    padding: 20px;
+  }
+  select, button {
+    background: #1f2833;
+    color: white;
+    padding: 8px;
+    margin: 5px;
+    border: none;
+    border-radius: 5px;
+  }
+  #price {
+    font-size: 2em;
+    margin-top: 20px;
+  }
+  #signal {
+    font-size: 1.5em;
+    margin-top: 10px;
+    font-weight: bold;
+  }
+  canvas {
+    width: 90%;
+    max-width: 700px;
+    height: 300px;
+    margin-top: 30px;
+    background: #1f2833;
+    border-radius: 10px;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-<div class="wrap">
-  <header><h1>Crypto Dashboard AI — BTC default (1s updates)</h1>
-    <div class="muted">Default pair: BTCUSDT. Dropdown includes many cryptos and popular stocks (stocks need API).</div>
-  </header>
+<h1>Crypto AI Dashboard</h1>
 
-  <div class="controls">
-    <label>Pair:
-      <select id="pairSelect"></select>
-    </label>
-    <label>Fiat:
-      <select id="fiatSelect"><option value="USD">USD</option><option value="MXN">MXN</option></select>
-    </label>
-    <button id="connectBtn">Connect</button>
-    <button id="clearLines">Clear lines</button>
-    <div id="aiSignal" class="aiSig">AI: —</div>
-  </div>
+<select id="pair">
+  <option value="BTCUSDT">BTC/USDT</option>
+  <option value="ETHUSDT">ETH/USDT</option>
+  <option value="BNBUSDT">BNB/USDT</option>
+  <option value="DOGEUSDT">DOGE/USDT</option>
+  <option value="SHIBUSDT">SHIB/USDT</option>
+</select>
+<button onclick="changePair()">Change</button>
 
-  <div class="chartCard">
-    <canvas id="chart" height="420"></canvas>
-    <div class="stats">
-      <div>Open: <span id="openV">—</span></div>
-      <div>High: <span id="highV">—</span></div>
-      <div>Low: <span id="lowV">—</span></div>
-      <div>Close: <span id="closeV">—</span></div>
-      <div>Vol(24h): <span id="volV">—</span></div>
-    </div>
-  </div>
+<div id="price">Loading...</div>
+<div id="signal">Signal: WAIT</div>
 
-  <div class="side">
-    <h3>New listings (every 10m)</h3>
-    <div id="newListings">—</div>
-    <h3>Top movers (24h)</h3>
-    <div id="movers">—</div>
-    <h3>Backtest</h3>
-    <button id="runBacktest">Run SMA Crossover</button>
-    <div id="backtestRes">—</div>
-  </div>
-
-  <footer>Instructions in README.txt</footer>
-</div>
+<canvas id="chart"></canvas>
 
 <script>
-// ======= Config =======
-const backendURL = "https://crypto-dashboard-aiv2.onrender.com"; // your Render link
-const ws = new WebSocket(`${backendURL}/ws?pair=BTCUSDT`);
-const WS_PROXY_PATH = '/ws'; // backend will accept ws on same host /ws?pair=...
-const FX_API = 'https://api.exchangerate.host/latest?base=USD&symbols=MXN';
-const NEW_LISTINGS_INTERVAL_MIN = 10; // minutes
+const apiBase = "https://your-render-app-name.onrender.com"; // change this!
+let currentPair = "BTCUSDT";
+let chart, dataPoints = [];
 
-// ======= Helpers =======
-function el(id){ return document.getElementById(id); }
-function fmtCurrency(v, fiat, fxRate){
-  if(v==null || isNaN(v)) return '—';
-  if(fiat==='MXN' && fxRate) return (v*fxRate).toLocaleString(undefined,{style:'currency',currency:'MXN',maximumFractionDigits:2});
-  return v.toLocaleString(undefined,{style:'currency',currency:'USD',maximumFractionDigits:2});
+async function fetchPrice() {
+  const res = await fetch(`${apiBase}/api/price`);
+  const data = await res.json();
+  document.getElementById("price").innerText = `${data.symbol}: $${data.price}`;
+  dataPoints.push(data.price);
+  if (dataPoints.length > 60) dataPoints.shift();
+  updateChart();
 }
 
-// ======= Populate dropdown with many cryptos + some stocks =======
-const cryptos = [
-  'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','ADAUSDT','XRPUSDT','DOGEUSDT','DOTUSDT','AVAXUSDT','MATICUSDT',
-  'LTCUSDT','LINKUSDT','SHIBUSDT','PEPEUSDT','ATOMUSDT','TRXUSDT','NEARUSDT','FTMUSDT','SUIUSDT','OPUSDT'
-];
-const stocks = ['AAPL','TSLA','NVDA','AMZN','MSFT','META'];
-const pairSelect = el('pairSelect');
-[...cryptos, ...stocks].forEach(s=>{
-  const opt = document.createElement('option');
-  opt.value = s;
-  opt.innerText = s;
-  pairSelect.appendChild(opt);
-});
-pairSelect.value = DEFAULT_PAIR;
-
-// ======= Chart setup =======
-const ctx = el('chart').getContext('2d');
-let chart;
-function createChart(){
-  if(chart) chart.destroy();
-  chart = new Chart(ctx, {
-    type: 'bar',
-    data: { labels: [], datasets: [
-      { type:'bar', label:'Volume', data:[], yAxisID:'v', backgroundColor:'rgba(255,255,255,0.06)'},
-      { type:'line', label:'Close', data:[], yAxisID:'p', borderColor:'rgb(0,200,255)', tension:0.3, pointRadius:0 },
-      { type:'line', label:'Volatility', data:[], yAxisID:'v', borderColor:'rgb(255,180,0)', borderDash:[5,5], pointRadius:0 },
-      { type:'line', label:'Prediction', data:[], yAxisID:'p', borderColor:'#7ee787', borderDash:[8,6], pointRadius:0 }
-    ]},
-    options: {
-      animation:false,
-      scales: { x:{ ticks:{ color:'#cfeffd' } }, p:{ position:'left', ticks:{ color:'#cfeffd' } }, v:{ position:'right', ticks:{ color:'#cfeffd' } } },
-      plugins: { annotation: { annotations: {} } }
-    }
-  });
-}
-createChart();
-
-// ======= Annotations / drawing lines =======
-let addLineMode = false;
-let annotationId = 0;
-document.getElementById('clearLines').addEventListener('click', ()=> {
-  chart.options.plugins.annotation.annotations = {};
-  chart.update();
-});
-el('chart').addEventListener('click', (evt)=>{
-  if(!addLineMode) return;
-  const rect = ctx.canvas.getBoundingClientRect();
-  const y = evt.clientY - rect.top;
-  const yScale = chart.scales['p'];
-  const value = yScale.getValueForPixel(y);
-  annotationId++;
-  const id = 'h' + annotationId;
-  chart.options.plugins.annotation.annotations[id] = {
-    type:'line', yMin:value, yMax:value,
-    borderColor:'#ffcc66', borderWidth:1,
-    label:{ enabled:true, content: 'S/R '+value.toFixed(6), backgroundColor:'#062a35' },
-    draggable:true
-  };
-  chart.update();
-  addLineMode = false;
-});
-
-// ======= WebSocket proxy connection & data handling =======
-let ws = null;
-let fxRate = null;
-let lastPrices = [];
-let lastVolumes = [];
-let lastLabels = [];
-let lastTickerData = null;
-let uiThrottle = 1000; // 1s updates
-let lastUi = 0;
-
-function connect(pair){
-  if(ws) ws.close();
-  const url = `${location.protocol.replace('http','ws')}//${location.host}${WS_PROXY_PATH}?pair=${pair}`;
-  ws = new WebSocket(url);
-  ws.onopen = ()=>{ console.log('ws open', url); status('WS open'); };
-  ws.onmessage = (evt)=> {
-    try{
-      const data = JSON.parse(evt.data);
-      const price = parseFloat(data.p);
-      const vol = parseFloat(data.q);
-      const nowLabel = new Date().toLocaleTimeString();
-      lastPrices.push(price);
-      lastVolumes.push(vol);
-      lastLabels.push(nowLabel);
-      if(lastPrices.length>300){ lastPrices.shift(); lastVolumes.shift(); lastLabels.shift(); }
-      const now = Date.now();
-      if(now - lastUi > uiThrottle){
-        lastUi = now;
-        renderUI();
-      }
-    }catch(e){ console.warn('ws parse', e); }
-  };
-  ws.onclose = ()=> status('WS closed');
-  ws.onerror = (e)=> status('WS error');
+async function fetchSignal() {
+  const res = await fetch(`${apiBase}/api/signal`);
+  const data = await res.json();
+  const el = document.getElementById("signal");
+  el.innerText = `Signal: ${data.signal}`;
+  el.style.color = data.signal === "BUY" ? "#4cff4c" : data.signal === "SELL" ? "#ff4c4c" : "#f8f8f8";
 }
 
-// ======= UI Rendering, predictor, AI decision =======
-function renderUI(){
-  chart.data.labels = lastLabels.slice(-200);
-  chart.data.datasets[1].data = lastPrices.slice(-200);
-  chart.data.datasets[0].data = lastVolumes.slice(-200);
-  const closes = lastPrices.slice(-200);
-  const returns = [];
-  for(let i=1;i<closes.length;i++) returns.push((closes[i]-closes[i-1])/closes[i-1]);
-  const volSeries = [];
-  const win = Math.min(20, Math.max(5, Math.floor(closes.length/10)));
-  for(let i=0;i<closes.length;i++){
-    if(i<win) volSeries.push(null);
-    else {
-      const seg = closes.slice(Math.max(0,i-win+1), i+1);
-      const rs = [];
-      for(let j=1;j<seg.length;j++) rs.push((seg[j]-seg[j-1])/seg[j-1]);
-      const mu = rs.reduce((a,b)=>a+b,0)/rs.length;
-      const s2 = rs.reduce((a,b)=>a+(b-mu)*(b-mu),0)/(rs.length-1 || 1);
-      volSeries.push(Math.sqrt(s2)*100);
-    }
+function changePair() {
+  const newPair = document.getElementById("pair").value;
+  fetch(`${apiBase}/api/change/${newPair}`);
+  currentPair = newPair;
+  dataPoints = [];
+}
+
+function updateChart() {
+  if (!chart) {
+    const ctx = document.getElementById("chart").getContext("2d");
+    chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: Array(dataPoints.length).fill(""),
+        datasets: [{
+          label: "Price",
+          borderColor: "#66fcf1",
+          backgroundColor: "rgba(102, 252, 241, 0.2)",
+          data: dataPoints,
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: { scales: { x: { display: false } } }
+    });
+  } else {
+    chart.data.labels = Array(dataPoints.length).fill("");
+    chart.data.datasets[0].data = dataPoints;
+    chart.update();
   }
-  chart.data.datasets[2].data = volSeries.slice(-200);
-  const N = Math.min(120, closes.length);
-  const y = closes.slice(-N);
-  const lr = weightedRegression(y, 0.95);
-  const nextIdx = y.length;
-  const predicted = lr.intercept + lr.slope*nextIdx;
-  const plotCount = Math.min(50, y.length);
-  const plotY = y.slice(-plotCount);
-  const predSeries = plotY.concat([predicted]);
-  chart.data.datasets[3].data = predSeries;
-  el('openV').innerText = fmtCurrency(y[0]||0, el('fiatSelect').value, fxRate);
-  el('highV').innerText = fmtCurrency(Math.max(...y), el('fiatSelect').value, fxRate);
-  el('lowV').innerText = fmtCurrency(Math.min(...y), el('fiatSelect').value, fxRate);
-  el('closeV').innerText = fmtCurrency(y[y.length-1]||0, el('fiatSelect').value, fxRate);
-  const volatility = volSeries[volSeries.length-1] ? volSeries[volSeries.length-1]/100 : 0.001;
-  const ai = getAISignal(y[y.length-1] || 0, predicted, volatility);
-  el('aiSignal').innerText = `${ai.signal} (${ai.confidence}%) — ${ai.reason}`;
-  const labels = lastLabels.slice(-plotCount).concat(['pred']);
-  chart.data.labels = labels;
-  chart.update();
 }
 
-function weightedRegression(y, alpha=0.95){
-  const n = y.length;
-  if(n===0) return {slope:0, intercept:0, sigma:0};
-  const w = new Array(n);
-  for(let i=0;i<n;i++) w[i] = Math.pow(alpha, n-1-i);
-  const wsum = w.reduce((a,b)=>a+b,0);
-  for(let i=0;i<n;i++) w[i] /= wsum;
-  let Sx=0,Sy=0,Sxx=0,Sxy=0;
-  for(let i=0;i<n;i++){
-    const xi = i, yi = y[i], wi = w[i];
-    Sx += wi*xi; Sy += wi*yi; Sxx += wi*xi*xi; Sxy += wi*xi*yi;
-  }
-  const denom = Sxx - Sx*Sx;
-  const slope = denom===0?0:(Sxy - Sx*Sy)/denom;
-  const intercept = Sy - slope*Sx;
-  let mse=0;
-  for(let i=0;i<n;i++){ const pred = intercept + slope*i; const err = y[i]-pred; mse += w[i]*err*err; }
-  const sigma = Math.sqrt(mse);
-  return {slope, intercept, sigma};
-}
-
-function getAISignal(currentPrice, predictedPrice, volatility){
-  const slope = predictedPrice - currentPrice;
-  let signal='HOLD', reason='Market indecisive', color='orange';
-  let confidence = Math.min(100, Math.max(0, (Math.abs(slope) / (volatility + 0.0001)) * 100));
-  if(slope > 0 && volatility < 0.015){ signal='BUY'; reason='Uptrend forming, low volatility'; color='green'; }
-  else if(slope < 0 && volatility > 0.02){ signal='SELL'; reason='Downtrend + high volatility'; color='red'; }
-  else { signal='HOLD'; }
-  return {signal, reason, color, confidence: confidence.toFixed(1)};
-}
-
-async function fetchFX(){
-  try{ const r = await fetch(FX_API); const j = await r.json(); return j.rates.MXN; }catch(e){ return null; }
-}
-async function fetchTopMovers(){
-  try{
-    const r = await fetch('/api/ticker24hr');
-    const j = await r.json();
-    const top = j.sort((a,b)=>Math.abs(parseFloat(b.priceChangePercent)) - Math.abs(parseFloat(a.priceChangePercent))).slice(0,8);
-    el('movers').innerHTML = top.map(t=>`<div>${t.symbol} ${Number(t.priceChangePercent).toFixed(2)}% vol:${Number(t.volume).toFixed(0)}</div>`).join('');
-  }catch(e){ el('movers').innerText = 'Failed'; }
-}
-async function fetchListings(){
-  try{
-    const r = await fetch('/api/exchangeInfo');
-    const j = await r.json();
-    const prev = JSON.parse(localStorage.getItem('knownSymbols')||'[]');
-    const current = j.symbols.map(s=>s.symbol);
-    const diff = current.filter(s=> !prev.includes(s));
-    if(diff.length>0){
-      el('newListings').innerHTML = diff.map(d=>`<div>🚨 ${d}</div>`).join('');
-      diff.forEach(d=> toast('New listing: '+d,8000));
-    } else el('newListings').innerText = 'No new listings';
-    localStorage.setItem('knownSymbols', JSON.stringify(current));
-  }catch(e){ el('newListings').innerText='Failed'; }
-}
-
-function toast(msg, ttl=5000){
-  const d = document.createElement('div'); d.innerText = msg; d.style.background='#062a35'; d.style.color='#fff';
-  d.style.padding='8px'; d.style.margin='6px'; d.style.borderRadius='6px'; d.style.position='fixed'; d.style.right='12px'; d.style.top='12px';
-  document.body.appendChild(d); setTimeout(()=>d.remove(), ttl);
-}
-
-el('connectBtn').addEventListener('click', ()=> {
-  const pair = pairSelect.value;
-  if(stocks.includes(pair)){ alert('Selected symbol is a stock placeholder; live stock feed not configured.'); }
-  connect(pair);
-});
-el('runBacktest').addEventListener('click', ()=> {
-  el('backtestRes').innerText = 'Backtest not implemented in demo.';
-});
-
-(async ()=>{
-  fxRate = await fetchFX();
-  fetchListings();
-  fetchTopMovers();
-  setInterval(fetchListings, NEW_LISTINGS_INTERVAL_MIN*60*1000);
-  setInterval(fetchTopMovers, 45*1000);
-})();
+setInterval(fetchPrice, 1000);
+setInterval(fetchSignal, 3000);
 </script>
-
 </body>
 </html>
