@@ -1,0 +1,10 @@
+body{font-family:Inter,Arial,Helvetica;background:#071019;color:#e6f0f3;margin:0;padding:12px}
+.wrap{max-width:1200px;margin:0 auto}
+header h1{color:#00e1ff;margin:0}
+.controls{display:flex;gap:8px;align-items:center;margin-top:12px}
+.controls select, .controls button{padding:8px;border-radius:6px;border:0;background:#0b2a3a;color:#fff}
+.chartCard{background:#0f1720;padding:12px;border-radius:8px;margin-top:12px}
+.stats{display:flex;gap:12px;margin-top:8px;color:#9fb0bb}
+.side{margin-top:12px;background:#0f1720;padding:12px;border-radius:8px}
+.aiSig{margin-left:12px;padding:6px 10px;border-radius:6px;background:#082029}
+.muted{color:#9fb0bb}
