@@ -3,25 +3,35 @@
 <head>
 <meta charset="UTF-8" />
 <title>Crypto AI Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   body {
-    background-color: #0b0c10;
+    background: linear-gradient(180deg, #0b0c10 0%, #1f2833 100%);
     color: #f8f8f8;
     font-family: "Segoe UI", sans-serif;
     text-align: center;
     padding: 20px;
   }
+  h1 {
+    color: #66fcf1;
+    font-weight: 600;
+  }
   select, button {
     background: #1f2833;
-    color: white;
-    padding: 8px;
+    color: #ffffff;
+    padding: 10px 15px;
     margin: 5px;
     border: none;
-    border-radius: 5px;
+    border-radius: 6px;
+    font-size: 1em;
+    cursor: pointer;
+    transition: 0.2s;
   }
+  button:hover { background: #45a29e; }
   #price {
     font-size: 2em;
     margin-top: 20px;
+    font-weight: bold;
   }
   #signal {
     font-size: 1.5em;
@@ -30,11 +40,12 @@
   }
   canvas {
     width: 90%;
-    max-width: 700px;
-    height: 300px;
-    margin-top: 30px;
-    background: #1f2833;
+    max-width: 800px;
+    height: 350px;
+    margin-top: 40px;
+    background: rgba(255,255,255,0.03);
     border-radius: 10px;
+    box-shadow: 0 0 10px rgba(102,252,241,0.2);
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -42,14 +53,16 @@
 <body>
 <h1>Crypto AI Dashboard</h1>
 
-<select id="pair">
-  <option value="BTCUSDT">BTC/USDT</option>
-  <option value="ETHUSDT">ETH/USDT</option>
-  <option value="BNBUSDT">BNB/USDT</option>
-  <option value="DOGEUSDT">DOGE/USDT</option>
-  <option value="SHIBUSDT">SHIB/USDT</option>
-</select>
-<button onclick="changePair()">Change</button>
+<div>
+  <select id="pair">
+    <option value="BTCUSDT">BTC/USDT</option>
+    <option value="ETHUSDT">ETH/USDT</option>
+    <option value="BNBUSDT">BNB/USDT</option>
+    <option value="DOGEUSDT">DOGE/USDT</option>
+    <option value="SHIBUSDT">SHIB/USDT</option>
+  </select>
+  <button onclick="changePair()">Change</button>
+</div>
 
 <div id="price">Loading...</div>
 <div id="signal">Signal: WAIT</div>
@@ -57,59 +70,65 @@
 <canvas id="chart"></canvas>
 
 <script>
-const apiBase = "https://crypto-dashboard-aiv2-1.onrender.com"; // change this!
+const apiBase = "https://crypto-dashboard-aiv2-1.onrender.com"; // CHANGE this to your real Render URL
 let currentPair = "BTCUSDT";
-let chart, dataPoints = [];
+let chart, dataPoints = [], labels = [];
+
+function initChart() {
+  const ctx = document.getElementById("chart").getContext("2d");
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Price (USDT)",
+        data: dataPoints,
+        borderColor: "#66fcf1",
+        backgroundColor: "rgba(102,252,241,0.15)",
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      scales: { x: { display: false }, y: { color: "#ffffff" } },
+      plugins: { legend: { labels: { color: "#f8f8f8" } } }
+    }
+  });
+}
 
 async function fetchPrice() {
-  const res = await fetch(`${apiBase}/api/price`);
-  const data = await res.json();
-  document.getElementById("price").innerText = `${data.symbol}: $${data.price}`;
-  dataPoints.push(data.price);
-  if (dataPoints.length > 60) dataPoints.shift();
-  updateChart();
+  try {
+    const res = await fetch(`${apiBase}/api/price`);
+    const data = await res.json();
+    if (!data.price) return;
+    document.getElementById("price").innerText = `${data.symbol}: $${parseFloat(data.price).toFixed(6)}`;
+    dataPoints.push(parseFloat(data.price));
+    labels.push("");
+    if (dataPoints.length > 100) { dataPoints.shift(); labels.shift(); }
+    chart.update();
+  } catch (e) { console.error(e); }
 }
 
 async function fetchSignal() {
-  const res = await fetch(`${apiBase}/api/signal`);
-  const data = await res.json();
-  const el = document.getElementById("signal");
-  el.innerText = `Signal: ${data.signal}`;
-  el.style.color = data.signal === "BUY" ? "#4cff4c" : data.signal === "SELL" ? "#ff4c4c" : "#f8f8f8";
+  try {
+    const res = await fetch(`${apiBase}/api/signal`);
+    const data = await res.json();
+    const el = document.getElementById("signal");
+    el.innerText = `Signal: ${data.signal}`;
+    el.style.color = data.signal === "BUY" ? "#4cff4c" :
+                     data.signal === "SELL" ? "#ff4c4c" : "#f8f8f8";
+  } catch (e) { console.error(e); }
 }
 
-function changePair() {
+async function changePair() {
   const newPair = document.getElementById("pair").value;
-  fetch(`${apiBase}/api/change/${newPair}`);
+  await fetch(`${apiBase}/api/change/${newPair}`);
   currentPair = newPair;
   dataPoints = [];
+  labels = [];
 }
 
-function updateChart() {
-  if (!chart) {
-    const ctx = document.getElementById("chart").getContext("2d");
-    chart = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: Array(dataPoints.length).fill(""),
-        datasets: [{
-          label: "Price",
-          borderColor: "#66fcf1",
-          backgroundColor: "rgba(102, 252, 241, 0.2)",
-          data: dataPoints,
-          fill: true,
-          tension: 0.3
-        }]
-      },
-      options: { scales: { x: { display: false } } }
-    });
-  } else {
-    chart.data.labels = Array(dataPoints.length).fill("");
-    chart.data.datasets[0].data = dataPoints;
-    chart.update();
-  }
-}
-
+initChart();
 setInterval(fetchPrice, 1000);
 setInterval(fetchSignal, 3000);
 </script>
