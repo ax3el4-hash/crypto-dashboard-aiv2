@@ -106,18 +106,15 @@ let labels = [];
 
 async function fetchPrice() {
   try {
-    const res = await fetch("/api/price");
+    // 🔹 Fetch directly from Binance public API (no server)
+    const res = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT");
     const data = await res.json();
-
-    console.log("Price fetched:", data); // ✅ check data in browser console
 
     const p = parseFloat(data.price);
     if (isNaN(p)) return;
 
-    // ✅ Update price display
     document.getElementById("price").innerText = `${data.symbol}: $${p.toFixed(6)}`;
 
-    // ✅ Update chart if it exists
     if (chart) {
       dataPoints.push(p);
       labels.push("");
@@ -134,21 +131,18 @@ async function fetchPrice() {
   }
 }
 
+// Simple “AI-style” random signal for demo
 async function fetchSignal() {
-  try {
-    const res = await fetch("/api/signal");
-    const data = await res.json();
+  const signals = ["BUY", "SELL", "HOLD"];
+  const signal = signals[Math.floor(Math.random() * signals.length)];
+  const confidence = (50 + Math.random() * 50).toFixed(1);
 
-    const signalDiv = document.getElementById("signal");
-    signalDiv.innerText = `${data.signal} (${data.confidence}%)`;
+  const signalDiv = document.getElementById("signal");
+  signalDiv.innerText = `${signal} (${confidence}%)`;
 
-    // ✅ Color-code signals
-    if (data.signal === "BUY") signalDiv.style.color = "#16c784";
-    else if (data.signal === "SELL") signalDiv.style.color = "#ea3943";
-    else signalDiv.style.color = "#f0b90b";
-  } catch (err) {
-    console.error("Signal fetch error:", err);
-  }
+  if (signal === "BUY") signalDiv.style.color = "#16c784";
+  else if (signal === "SELL") signalDiv.style.color = "#ea3943";
+  else signalDiv.style.color = "#f0b90b";
 }
 
 function initChart() {
@@ -179,15 +173,15 @@ function initChart() {
   });
 }
 
-// ✅ Ensure it runs after page loads
 window.onload = () => {
   initChart();
   fetchPrice();
   fetchSignal();
-  setInterval(fetchPrice, 1000); // every 1s
-  setInterval(fetchSignal, 3000); // every 3s
+  setInterval(fetchPrice, 1000);
+  setInterval(fetchSignal, 3000);
 };
 </script>
+
 
 </body>
 </html>
