@@ -1,13 +1,17 @@
 {
-  "name": "crypto-dashboard-aiv2",
+  "name": "crypto-dashboard-ai",
   "version": "1.0.0",
+  "description": "AI-powered crypto and stock trend dashboard",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "ws": "^8.12.0",
-    "node-fetch": "^1.6.0"
+    "cors": "^2.8.5",
+    "ws": "^8.15.0",
+    "node-fetch": "^3.3.2"
   }
 }
+
